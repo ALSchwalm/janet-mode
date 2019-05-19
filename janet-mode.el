@@ -41,6 +41,12 @@
     ;; For keywords, make the ':' part of the symbol class
     (modify-syntax-entry ?: "_" table)
 
+    ;; Other chars that are allowed in symbols
+    (modify-syntax-entry ?? "_" table)
+    (modify-syntax-entry ?! "_" table)
+    (modify-syntax-entry ?. "_" table)
+    (modify-syntax-entry ?@ "_" table)
+
     table))
 
 (defconst janet-symbol '(one-or-more (or (syntax word) (syntax symbol)))
@@ -49,60 +55,79 @@ A Janet symbol is a collection of words or symbol characters as determined by
 the syntax table.  This allows us to keep things like '-' in the symbol part of
 the syntax table, so `forward-word' works as expected.")
 
-(defconst janet-start-of-statement '(sequence "(" (zero-or-more space))
-  "Regex to match the beginning of an Janet statement.")
+(defconst janet-start-of-sexp '(sequence "(" (zero-or-more space)))
+
+(defconst janet-function-decl-forms
+  '("fn" "defn" "defn-" "defmacro" "defmacro-"))
 
 (defconst janet-function-pattern
-  (eval `(rx (or "defn" "defn-") (one-or-more space) (group ,janet-symbol) symbol-end))
+  (eval `(rx ,janet-start-of-sexp (or ,@janet-function-decl-forms)
+             (one-or-more space) (group ,janet-symbol) symbol-end))
   "The regex to identify janet function names.")
 
+(defconst janet-var-decl-forms
+  '("var" "def" "def-" "defglobal" "varglobal" "default" "dyn"))
+
 (defconst janet-variable-declaration-pattern
-  (eval `(rx (or "var") (one-or-more space) (group ,janet-symbol)))
+  (eval `(rx ,janet-start-of-sexp (or ,@janet-var-decl-forms)
+             (one-or-more space) (group ,janet-symbol)))
   "The regex to identify variable declarations.")
 
 (defconst janet-keyword-pattern
   (eval `(rx (group symbol-start ":" ,janet-symbol))))
 
-(defconst janet-start-of-sexp '(sequence "(" (zero-or-more space)))
-
-;; Maybe 'try' should be here
-(defconst janet-error-pattern (eval `(rx "error")))
+(defconst janet-error-pattern
+  (eval `(rx ,janet-start-of-sexp (group symbol-start "error" symbol-end))))
 
 (defconst janet-constant-pattern
   (eval `(rx symbol-start (group (or "true" "false" "nil")) symbol-end)))
 
 (defcustom janet-special-forms
-  '(
-    "defn"
-    "def"
-    "var"
-    "dyn"
-    "fn"
-    "do"
-    "quote"
-    "if"
-    "splice"
-    "while"
-    "break"
-    "set"
-    "quasiquote"
-    "unquote"
-    "fn"
-
-    ;; Not explicitly listed as special forms, but included for
+  `(
+    ;; Not all explicitly special forms, but included for
     ;; symmetry with other lisp-modes
-    "defmacro"
-    "import"
-    "defn-"
-    "def-"
+
+    "->"
+    "->>"
+    "-?>"
+    "-?>>"
+    "as->"
+    "as?->"
+    "break"
     "cond"
-    "switch"
-    "when"
+    "coro"
+    "do"
     "each"
-    "let"
+    "fn"
     "for"
+    "generate"
+    "if"
+    "if-let"
+    "if-not"
+    "import"
+    "let"
+    "loop"
     "match"
-    "try")
+    "quasiquote"
+    "quote"
+    "require"
+    "seq"
+    "set"
+    "setdyn"
+    "splice"
+    "switch"
+    "try"
+    "unless"
+    "unquote"
+    "var"
+    "when"
+    "when-let"
+    "while"
+    "with-dyns"
+    "with-syms"
+
+    ,@janet-var-decl-forms
+    ,@janet-function-decl-forms)
   "List of Janet special forms."
   :type 'list
   :group 'janet-mode)
@@ -116,10 +141,8 @@ the syntax table, so `forward-word' works as expected.")
   `((,janet-special-form-pattern . (1 font-lock-keyword-face))
     (,janet-function-pattern . (1 font-lock-function-name-face))
     (,janet-variable-declaration-pattern . (1 font-lock-variable-name-face))
-    (,janet-error-pattern . font-lock-warning-face)
+    (,janet-error-pattern . (1 font-lock-warning-face))
     (,janet-constant-pattern . (1 font-lock-constant-face))
-
-    ;; Builtin seems like a strange choice, but it is used in lisp-mode
     (,janet-keyword-pattern . (1 font-lock-builtin-face))))
 
 (defcustom janet-indent 2
