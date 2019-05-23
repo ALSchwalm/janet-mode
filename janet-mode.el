@@ -55,7 +55,7 @@ A Janet symbol is a collection of words or symbol characters as determined by
 the syntax table.  This allows us to keep things like '-' in the symbol part of
 the syntax table, so `forward-word' works as expected.")
 
-(defconst janet-start-of-sexp '(sequence "(" (zero-or-more space)))
+(defconst janet-start-of-sexp '(sequence "(" (zero-or-more (or space "\n"))))
 
 (defconst janet-function-decl-forms
   '("fn" "defn" "defn-" "defmacro" "defmacro-"))
@@ -145,42 +145,249 @@ the syntax table, so `forward-word' works as expected.")
     (,janet-constant-pattern . (1 font-lock-constant-face))
     (,janet-keyword-pattern . (1 font-lock-builtin-face))))
 
+;; The janet-mode indentation logic borrows heavily from
+;; racket-mode and clojure-mode
+
 (defcustom janet-indent 2
   "The number of spaces to add per indentation level."
   :type 'integer
   :group 'janet-mode)
 
-(defun janet-looking-at-closing-char ()
-  "Test whether the char at point is a closing delemeter."
-  (eq (char-syntax (char-after (point))) ?\)))
+(defcustom janet-indent-sequence-depth 1
+  "To what depth should `janet-indent-line' search.
+This affects the indentation of forms like '() `() and {},
+but not () or ,@().  A zero value disables, giving the normal
+indent behavior of Emacs `lisp-mode' derived modes.  Setting this
+to a high value can make indentation noticeably slower."
+  :type 'integer
+  :group 'janet-mode)
 
-(defun janet-indent-function ()
-  "This function is normally the value of 'indent-line-function' in Janet.
-The indent is currently calculated via 'syntax-ppss'.  This could
-be switched to using SMIE.  This approach also does not attempt to
-align s-expressions."
+(defun janet--ppss-containing-sexp (xs)
+  "The start of the innermost paren grouping containing the stopping point.
+XS must be a `parse-partial-sexp' -- NOT `syntax-ppss'."
+  (elt xs 1))
+
+(defun janet--ppss-last-sexp (xs)
+  "The character position of the start of the last complete subexpression.
+XS must be a `parse-partial-sexp' -- NOT `syntax-ppss'."
+  (elt xs 2))
+
+(defun janet--ppss-string-p (xs)
+  "Non-nil if inside a string.
+More precisely, this is the character that will terminate the
+string, or t if a generic string delimiter character should
+terminate it.
+XS must be a `parse-partial-sexp' -- NOT `syntax-ppss'."
+  (elt xs 3))
+
+(defun janet-indent-line ()
+  "Indent current line as Janet code."
+  (interactive)
+  (pcase (janet--calculate-indent)
+    (`()  nil)
+    ;; When point is within the leading whitespace, move it past the
+    ;; new indentation whitespace. Otherwise preserve its position
+    ;; relative to the original text.
+    (amount (let ((pos (- (point-max) (point)))
+                  (beg (progn (beginning-of-line) (point))))
+              (skip-chars-forward " \t")
+              (unless (= amount (current-column))
+                (delete-region beg (point))
+                (indent-to amount))
+              (when (< (point) (- (point-max) pos))
+                (goto-char (- (point-max) pos)))))))
+
+(defun janet--calculate-indent ()
+  "Calculate the appropriate indentation for the current Janet line."
   (save-excursion
-    (back-to-indentation)
-    (indent-line-to (* janet-indent
-                       (- (car (syntax-ppss))
-                          (if (janet-looking-at-closing-char)
-                              1
-                            0)
-                          ))))
-  (if (< (current-column)
-	 (save-excursion
-	   (back-to-indentation)
-	   (current-column)))
-      (back-to-indentation)))
+    (beginning-of-line)
+    (let ((indent-point (point))
+          (state        nil))
+      (janet--plain-beginning-of-defun)
+      (while (< (point) indent-point)
+        (setq state (parse-partial-sexp (point) indent-point 0)))
+      (let ((strp (janet--ppss-string-p state))
+            (last (janet--ppss-last-sexp state))
+            (cont (janet--ppss-containing-sexp state)))
+        (cond
+         (strp                  nil)
+         ((and state last cont) (janet-indent-function indent-point state))
+         (cont                  (goto-char (1+ cont)) (current-column))
+         (t                     (current-column)))))))
+
+(defun janet--plain-beginning-of-defun ()
+  "Quickly move to the start of the function containing the point."
+  (when (re-search-backward (rx bol (syntax open-parenthesis))
+                            nil
+                            'move)
+    (goto-char (1- (match-end 0)))))
+
+(defun janet--get-indent-function-method (symbol)
+  "Retrieve the indent function for a given SYMBOL."
+  (let ((sym (intern-soft symbol)))
+    (get sym 'janet-indent-function)))
+
+(defun janet-indent-function (indent-point state)
+  "Called by `janet--calculate-indent' to get indent column.
+
+INDENT-POINT is the position at which the line being indented begins.
+STATE is the `parse-partial-sexp' state for that position.
+There is special handling for:
+  - Common Janet special forms
+  - [], @[], {}, and @{} forms"
+  (goto-char (janet--ppss-containing-sexp state))
+  (let ((body-indent (+ (current-column) janet-indent)))
+    (forward-char 1)
+    (if (janet--data-sequence-p)
+        (progn
+          (backward-prefix-chars)
+          ;; Don't indent the end of a data list
+          (when (save-excursion
+                  (goto-char indent-point)
+                  (backward-to-indentation 0)
+                  (eq (char-syntax (char-after (point))) ?\)))
+            (backward-char 1))
+          (current-column))
+      (let* ((head   (buffer-substring (point) (progn (forward-sexp 1) (point))))
+             (method (janet--get-indent-function-method head)))
+        (cond ((integerp method)
+               (janet--indent-special-form method indent-point state))
+              ((eq method 'defun)
+               body-indent)
+              (method
+               (funcall method indent-point state))
+              ((string-match (rx bos (or "def" "with-")) head)
+               body-indent) ;just like 'defun
+              (t
+               (janet--normal-indent indent-point state)))))))
+
+(defun janet--data-sequence-p ()
+  "Is the point in a data squence?
+
+Data sequences consist of '(), {}, @{}, [], and @[]."
+  (and (< 0 janet-indent-sequence-depth)
+       (save-excursion
+         (ignore-errors
+           (let ((answer 'unknown)
+                 (depth janet-indent-sequence-depth))
+             (while (and (eq answer 'unknown)
+                         (< 0 depth))
+               (backward-up-list)
+               (cl-decf depth)
+               (cond ((or
+                       ;; a quoted '( ) or quasiquoted `( ) list
+                       (and (memq (char-before (point)) '(?\' ?\`))
+                            (eq (char-after (point)) ?\())
+                       ;; [ ]
+                       (eq (char-after (point)) ?\[)
+                       ;; { }
+                       (eq (char-after (point)) ?{))
+                      (setq answer t))
+                     (;; unquote or unquote-splicing
+                      (and (or (eq (char-before (point)) ?,)
+                               (and (eq (char-before (1- (point))) ?,)
+                                    (eq (char-before (point))      ?@)))
+                           (eq (char-after (point)) ?\())
+                      (setq answer nil))))
+             (eq answer t))))))
+
+(defun janet--normal-indent (indent-point state)
+  "Calculate the correct indentation for a 'normal' Janet form.
+
+INDENT-POINT is the position at which the line being indented begins.
+STATE is the `parse-partial-sexp' state for that position."
+  (goto-char (janet--ppss-last-sexp state))
+  (backward-prefix-chars)
+  (let ((last-sexp nil))
+    (if (ignore-errors
+          ;; `backward-sexp' until we reach the start of a sexp that is the
+          ;; first of its line (the start of the enclosing sexp).
+          (while (string-match (rx (not blank))
+                               (buffer-substring (line-beginning-position)
+                                                 (point)))
+            (setq last-sexp (prog1 (point)
+                              (forward-sexp -1))))
+          t)
+        ;; Here we've found an arg before the arg we're indenting
+        ;; which is at the start of a line.
+        (current-column)
+      ;; Here we've reached the start of the enclosing sexp (point is
+      ;; now at the function name), so the behavior depends on whether
+      ;; there's also an argument on this line.
+      (when (and last-sexp
+                 (< last-sexp (line-end-position)))
+        ;; There's an arg after the function name, so align with it.
+        (goto-char last-sexp))
+      (current-column))))
+
+(defun janet--indent-special-form (method indent-point state)
+  "Calculate the correct indentation for a 'special' Janet form.
+
+METHOD is the number of \"special\" args that get extra indent when
+    not on the first line. Any additinonl args get normal indent
+INDENT-POINT is the position at which the line being indented begins.
+STATE is the `parse-partial-sexp' state for that position."
+  (let ((containing-column (save-excursion
+                             (goto-char (janet--ppss-containing-sexp state))
+                             (current-column)))
+        (pos -1))
+    (condition-case nil
+        (while (and (<= (point) indent-point)
+                    (not (eobp)))
+          (forward-sexp 1)
+          (cl-incf pos))
+      ;; If indent-point is _after_ the last sexp in the current sexp,
+      ;; we detect that by catching the `scan-error'. In that case, we
+      ;; should return the indentation as if there were an extra sexp
+      ;; at point.
+      (scan-error (cl-incf pos)))
+    (cond ((= method pos)               ;first non-distinguished arg
+           (+ containing-column janet-indent))
+          ((< method pos)               ;more non-distinguished args
+           (janet--normal-indent indent-point state))
+          (t                            ;distinguished args
+           (+ containing-column (* 2 janet-indent))))))
+
+(defun janet--set-indentation ()
+  "Set indentation for various Janet forms."
+  (mapc (lambda (x)
+          (put (car x) 'janet-indent-function (cadr x)))
+        '((and  0)
+          (defmacro defun)
+          (defmacro- defun)
+          (defn defun)
+          (defn- defun)
+          (case 1)
+          (cond 0)
+          (do  0)
+          (each  2)
+          (fn defun)
+          (for 3)
+          (if 1)
+          (if-let 1)
+          (if-not 1)
+          (let 1)
+          (loop 1)
+          (match 1)
+          (or 0)
+          (reduce 0)
+          (try 0)
+          (unless 1)
+          (when 1)
+          (when-let 1)
+          (while 1))))
 
 ;;;###autoload
 (define-derived-mode janet-mode prog-mode "janet"
   "Major mode for the Janet language"
   :syntax-table janet-mode-syntax-table
   (setq-local font-lock-defaults '(janet-highlights))
-  (setq-local indent-line-function #'janet-indent-function)
+  (setq-local indent-line-function #'janet-indent-line)
   (setq-local comment-start "#")
-  (setq-local comment-end ""))
+  (setq-local comment-start-skip "#+ *")
+  (setq-local comment-use-syntax t)
+  (setq-local comment-end "")
+  (janet--set-indentation))
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.janet\\'" . janet-mode))
