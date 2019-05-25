@@ -115,7 +115,6 @@ the syntax table, so `forward-word' works as expected.")
     "set"
     "setdyn"
     "splice"
-    "switch"
     "try"
     "unless"
     "unquote"
@@ -211,9 +210,18 @@ XS must be a `parse-partial-sexp' -- NOT `syntax-ppss'."
             (cont (janet--ppss-containing-sexp state)))
         (cond
          (strp                  nil)
+         ((and (janet--looking-at-keyword-p last)
+               (not (janet--at-closing-delimiter-p indent-point)))
+          (goto-char (1+ cont)) (+ (current-column) janet-indent))
          ((and state last cont) (janet-indent-function indent-point state))
          (cont                  (goto-char (1+ cont)) (current-column))
          (t                     (current-column)))))))
+
+(defun janet--looking-at-keyword-p (point)
+  "Is the given POINT the start of a keyword?"
+  (save-excursion
+    (goto-char point)
+    (looking-at (eval `(rx ":" ,janet-symbol)))))
 
 (defun janet--plain-beginning-of-defun ()
   "Quickly move to the start of the function containing the point."
@@ -242,10 +250,7 @@ There is special handling for:
         (progn
           (backward-prefix-chars)
           ;; Don't indent the end of a data list
-          (when (save-excursion
-                  (goto-char indent-point)
-                  (backward-to-indentation 0)
-                  (eq (char-syntax (char-after (point))) ?\)))
+          (when (janet--line-closes-delimiter-p indent-point)
             (backward-char 1))
           (current-column))
       (let* ((head   (buffer-substring (point) (progn (forward-sexp 1) (point))))
@@ -260,6 +265,12 @@ There is special handling for:
                body-indent) ;just like 'defun
               (t
                (janet--normal-indent indent-point state)))))))
+
+(defun janet--line-closes-delimiter-p (point)
+  "Is the line at POINT ending an expression?"
+  (save-excursion
+    (goto-char point)
+    (looking-at (rx (zero-or-more space) (syntax close-parenthesis)))))
 
 (defun janet--data-sequence-p ()
   "Is the point in a data squence?
