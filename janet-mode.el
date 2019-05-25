@@ -211,7 +211,7 @@ XS must be a `parse-partial-sexp' -- NOT `syntax-ppss'."
         (cond
          (strp                  nil)
          ((and (janet--looking-at-keyword-p last)
-               (not (janet--at-closing-delimiter-p indent-point)))
+               (not (janet--line-closes-delimiter-p indent-point)))
           (goto-char (1+ cont)) (+ (current-column) janet-indent))
          ((and state last cont) (janet-indent-function indent-point state))
          (cont                  (goto-char (1+ cont)) (current-column))
