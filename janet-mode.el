@@ -1,4 +1,4 @@
-;;; janet-mode.el --- Defines a major mode for Janet
+;;; janet-mode.el --- Defines a major mode for Janet -*- lexical-binding: t; -*-
 
 ;; Copyright (c) 2019 Adam Schwalm
 
@@ -26,9 +26,8 @@
 
 ;;; Code:
 
-(defgroup janet-mode nil
+(defgroup janet nil
   "A mode for Janet"
-  :prefix "janet-mode-"
   :group 'languages)
 
 (defvar janet-mode-syntax-table
@@ -128,8 +127,8 @@ the syntax table, so `forward-word' works as expected.")
     ,@janet-var-decl-forms
     ,@janet-function-decl-forms)
   "List of Janet special forms."
-  :type 'list
-  :group 'janet-mode)
+  :type '(repeat string)
+  :group 'janet)
 
 (defconst janet-special-form-pattern
   (let ((builtins (cons 'or janet-special-forms)))
@@ -150,7 +149,7 @@ the syntax table, so `forward-word' works as expected.")
 (defcustom janet-indent 2
   "The number of spaces to add per indentation level."
   :type 'integer
-  :group 'janet-mode)
+  :group 'janet)
 
 (defcustom janet-indent-sequence-depth 1
   "To what depth should `janet-indent-line' search.
@@ -159,7 +158,7 @@ but not () or ,@().  A zero value disables, giving the normal
 indent behavior of Emacs `lisp-mode' derived modes.  Setting this
 to a high value can make indentation noticeably slower."
   :type 'integer
-  :group 'janet-mode)
+  :group 'janet)
 
 (defun janet--ppss-containing-sexp (xs)
   "The start of the innermost paren grouping containing the stopping point.
