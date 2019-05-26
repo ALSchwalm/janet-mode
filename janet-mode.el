@@ -263,7 +263,7 @@ There is special handling for:
               ((string-match (rx bos (or "def" "with-")) head)
                body-indent) ;just like 'defun
               (t
-               (janet--normal-indent indent-point state)))))))
+               (janet--normal-indent state)))))))
 
 (defun janet--line-closes-delimiter-p (point)
   "Is the line at POINT ending an expression?"
@@ -301,10 +301,9 @@ Data sequences consist of '(), {}, @{}, [], and @[]."
                       (setq answer nil))))
              (eq answer t))))))
 
-(defun janet--normal-indent (indent-point state)
+(defun janet--normal-indent (state)
   "Calculate the correct indentation for a 'normal' Janet form.
 
-INDENT-POINT is the position at which the line being indented begins.
 STATE is the `parse-partial-sexp' state for that position."
   (goto-char (janet--ppss-last-sexp state))
   (backward-prefix-chars)
@@ -354,7 +353,7 @@ STATE is the `parse-partial-sexp' state for that position."
     (cond ((= method pos)               ;first non-distinguished arg
            (+ containing-column janet-indent))
           ((< method pos)               ;more non-distinguished args
-           (janet--normal-indent indent-point state))
+           (janet--normal-indent state))
           (t                            ;distinguished args
            (+ containing-column (* 2 janet-indent))))))
 
