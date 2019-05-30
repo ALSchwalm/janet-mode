@@ -40,6 +40,9 @@
     ;; For keywords, make the ':' part of the symbol class
     (modify-syntax-entry ?: "_" table)
 
+    ;; Backtick is a string delimiter
+    (modify-syntax-entry ?` "\"" table)
+
     ;; Other chars that are allowed in symbols
     (modify-syntax-entry ?? "_" table)
     (modify-syntax-entry ?! "_" table)
