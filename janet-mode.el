@@ -223,9 +223,10 @@ XS must be a `parse-partial-sexp' -- NOT `syntax-ppss'."
 
 (defun janet--looking-at-keyword-p (point)
   "Is the given POINT the start of a keyword?"
-  (save-excursion
-    (goto-char point)
-    (looking-at (rx-to-string `(group ":" ,janet-symbol)))))
+  (when point
+    (save-excursion
+      (goto-char point)
+      (looking-at (rx-to-string `(group ":" ,janet-symbol))))))
 
 (defun janet--plain-beginning-of-defun ()
   "Quickly move to the start of the function containing the point."
