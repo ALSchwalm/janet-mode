@@ -63,26 +63,28 @@ the syntax table, so `forward-word' works as expected.")
   '("fn" "defn" "defn-" "defmacro" "defmacro-"))
 
 (defconst janet-function-pattern
-  (eval `(rx ,janet-start-of-sexp (or ,@janet-function-decl-forms)
-             (one-or-more space) (group ,janet-symbol) symbol-end))
+  (rx-to-string `(,@janet-start-of-sexp
+                  (or ,@janet-function-decl-forms)
+                  (one-or-more space) (group ,janet-symbol) symbol-end))
   "The regex to identify janet function names.")
 
 (defconst janet-var-decl-forms
   '("var" "def" "def-" "defglobal" "varglobal" "default" "dyn"))
 
 (defconst janet-variable-declaration-pattern
-  (eval `(rx ,janet-start-of-sexp (or ,@janet-var-decl-forms)
-             (one-or-more space) (group ,janet-symbol)))
+  (rx-to-string `(,@janet-start-of-sexp
+                  (or ,@janet-var-decl-forms)
+                  (one-or-more space) (group ,janet-symbol)))
   "The regex to identify variable declarations.")
 
 (defconst janet-keyword-pattern
-  (eval `(rx (group symbol-start ":" ,janet-symbol))))
+  (rx-to-string `(group symbol-start ":" ,janet-symbol)))
 
 (defconst janet-error-pattern
-  (eval `(rx ,janet-start-of-sexp (group symbol-start "error" symbol-end))))
+  (rx-to-string `(,@janet-start-of-sexp (group symbol-start "error" symbol-end))))
 
 (defconst janet-constant-pattern
-  (eval `(rx symbol-start (group (or "true" "false" "nil")) symbol-end)))
+  (rx-to-string `(group symbol-start (group (or "true" "false" "nil")) symbol-end)))
 
 (defcustom janet-special-forms
   `(
@@ -135,7 +137,7 @@ the syntax table, so `forward-word' works as expected.")
 
 (defconst janet-special-form-pattern
   (let ((builtins (cons 'or janet-special-forms)))
-    (eval `(rx ,janet-start-of-sexp (group ,builtins) symbol-end)))
+    (rx-to-string `(,@janet-start-of-sexp (group ,builtins) symbol-end)))
   "The regex to identify builtin Janet special forms.")
 
 (defconst janet-highlights
@@ -223,7 +225,7 @@ XS must be a `parse-partial-sexp' -- NOT `syntax-ppss'."
   "Is the given POINT the start of a keyword?"
   (save-excursion
     (goto-char point)
-    (looking-at (eval `(rx ":" ,janet-symbol)))))
+    (looking-at (rx-to-string `(group ":" ,janet-symbol)))))
 
 (defun janet--plain-beginning-of-defun ()
   "Quickly move to the start of the function containing the point."
