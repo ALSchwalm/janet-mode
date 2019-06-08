@@ -86,6 +86,12 @@ the syntax table, so `forward-word' works as expected.")
 (defconst janet-constant-pattern
   (rx-to-string `(group symbol-start (group (or "true" "false" "nil")) symbol-end)))
 
+(defconst janet-imenu-generic-expression
+  '((nil
+     "^(\\(defn\\)*\\s-+(?\\(\\sw+\\)" 2)
+    ("Macros"
+     "^(\\(defmacro\\)\\s-+(?\\(\\sw+\\)" 2)))
+
 (defcustom janet-special-forms
   `(
     ;; Not all explicitly special forms, but included for
@@ -402,6 +408,9 @@ STATE is the `parse-partial-sexp' state for that position."
   (setq-local comment-start-skip "#+ *")
   (setq-local comment-use-syntax t)
   (setq-local comment-end "")
+  (setq-local imenu-case-fold-search t)
+  (setq-local imenu-generic-expression janet-imenu-generic-expression)
+  (setq-local imenu-syntax-alist '(("+-*/.<>=?!$%_&~^" . "w")))
   (janet--set-indentation))
 
 ;;;###autoload
