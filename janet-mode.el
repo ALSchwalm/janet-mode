@@ -407,5 +407,8 @@ STATE is the `parse-partial-sexp' state for that position."
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.janet\\'" . janet-mode))
 
+;;;###autoload
+(add-to-list 'interpreter-mode-alist '("janet" . janet-mode))
+
 (provide 'janet-mode)
 ;;; janet-mode.el ends here
