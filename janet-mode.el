@@ -126,8 +126,10 @@ the syntax table, so `forward-word' works as expected.")
     "when"
     "when-let"
     "while"
+    "with"
     "with-dyns"
     "with-syms"
+    "with-vars"
 
     ,@janet-var-decl-forms
     ,@janet-function-decl-forms)
