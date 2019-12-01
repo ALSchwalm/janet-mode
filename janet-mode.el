@@ -60,7 +60,7 @@ the syntax table, so `forward-word' works as expected.")
 (defconst janet-start-of-sexp '(sequence "(" (zero-or-more (or space "\n"))))
 
 (defconst janet-function-decl-forms
-  '("fn" "defn" "defn-" "defmacro" "defmacro-"))
+  '("fn" "defn" "defn-" "defmacro" "defmacro-" "varfn"))
 
 (defconst janet-function-pattern
   (rx-to-string `(,@janet-start-of-sexp
@@ -390,6 +390,7 @@ STATE is the `parse-partial-sexp' state for that position."
           (reduce 0)
           (try 0)
           (unless 1)
+          (varfn defun)
           (when 1)
           (when-let 1)
           (while 1))))
