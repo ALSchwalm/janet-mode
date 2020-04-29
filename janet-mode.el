@@ -69,7 +69,7 @@ the syntax table, so `forward-word' works as expected.")
   "The regex to identify janet function names.")
 
 (defconst janet-var-decl-forms
-  '("var" "def" "def-" "defglobal" "varglobal" "default" "dyn"))
+  '("var" "var-" "def" "def-" "defglobal" "varglobal" "default" "dyn"))
 
 (defconst janet-variable-declaration-pattern
   (rx-to-string `(,@janet-start-of-sexp
