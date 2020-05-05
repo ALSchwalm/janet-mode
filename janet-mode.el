@@ -401,6 +401,7 @@ STATE is the `parse-partial-sexp' state for that position."
   :syntax-table janet-mode-syntax-table
   (setq-local font-lock-defaults '(janet-highlights))
   (setq-local indent-line-function #'janet-indent-line)
+  (setq-local lisp-indent-function #'janet-indent-function)
   (setq-local comment-start "#")
   (setq-local comment-start-skip "#+ *")
   (setq-local comment-use-syntax t)
