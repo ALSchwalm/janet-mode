@@ -51,6 +51,13 @@
 
     table))
 
+(defun janet-syntax-propertize (start end)
+  (funcall
+   (syntax-propertize-rules
+    ;; suppress escape at the end of a literal string
+    ((rx "`" (* (not "`")) (group "\\") "`") (1 "_")))
+   start end))
+
 (defconst janet-symbol '(one-or-more (or (syntax word) (syntax symbol)))
   "Regex representation of a Janet symbol.
 A Janet symbol is a collection of words or symbol characters as determined by
@@ -399,6 +406,7 @@ STATE is the `parse-partial-sexp' state for that position."
 (define-derived-mode janet-mode prog-mode "janet"
   "Major mode for the Janet language"
   :syntax-table janet-mode-syntax-table
+  (setq-local syntax-propertize-function #'janet-syntax-propertize)
   (setq-local font-lock-defaults '(janet-highlights))
   (setq-local indent-line-function #'janet-indent-line)
   (setq-local lisp-indent-function #'janet-indent-function)
