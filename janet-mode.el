@@ -57,13 +57,13 @@ A Janet symbol is a collection of words or symbol characters as determined by
 the syntax table.  This allows us to keep things like '-' in the symbol part of
 the syntax table, so `forward-word' works as expected.")
 
-(defconst janet-start-of-sexp '(sequence "(" (zero-or-more (or space "\n"))))
+(defconst janet-start-of-sexp '("(" (zero-or-more (or space "\n"))))
 
 (defconst janet-function-decl-forms
   '("fn" "defn" "defn-" "defmacro" "defmacro-" "varfn"))
 
 (defconst janet-function-pattern
-  (rx-to-string `(,@janet-start-of-sexp
+  (rx-to-string `(sequence ,@janet-start-of-sexp
                   (or ,@janet-function-decl-forms)
                   (one-or-more space) (group ,janet-symbol) symbol-end))
   "The regex to identify janet function names.")
@@ -72,7 +72,7 @@ the syntax table, so `forward-word' works as expected.")
   '("var" "var-" "def" "def-" "defglobal" "varglobal" "default" "dyn"))
 
 (defconst janet-variable-declaration-pattern
-  (rx-to-string `(,@janet-start-of-sexp
+  (rx-to-string `(sequence ,@janet-start-of-sexp
                   (or ,@janet-var-decl-forms)
                   (one-or-more space) (group ,janet-symbol)))
   "The regex to identify variable declarations.")
@@ -81,10 +81,22 @@ the syntax table, so `forward-word' works as expected.")
   (rx-to-string `(group symbol-start ":" ,janet-symbol)))
 
 (defconst janet-error-pattern
-  (rx-to-string `(,@janet-start-of-sexp (group symbol-start "error" symbol-end))))
+  (rx-to-string `(sequence ,@janet-start-of-sexp (group symbol-start "error" symbol-end))))
 
 (defconst janet-constant-pattern
   (rx-to-string `(group symbol-start (group (or "true" "false" "nil")) symbol-end)))
+
+(defconst janet-imenu-generic-expression
+  `((nil
+     ,(rx-to-string `(sequence line-start ,@janet-start-of-sexp (or "defn" "defn-")
+                               (one-or-more space)
+                               (group ,janet-symbol)))
+     1)
+    ("Macro"
+     ,(rx-to-string `(sequence line-start ,@janet-start-of-sexp (or "defmacro" "defmacro-")
+                               (one-or-more space)
+                               (group ,janet-symbol)))
+     1)))
 
 (defcustom janet-special-forms
   `(
@@ -139,7 +151,7 @@ the syntax table, so `forward-word' works as expected.")
 
 (defconst janet-special-form-pattern
   (let ((builtins (cons 'or janet-special-forms)))
-    (rx-to-string `(,@janet-start-of-sexp (group ,builtins) symbol-end)))
+    (rx-to-string `(sequence ,@janet-start-of-sexp (group ,builtins) symbol-end)))
   "The regex to identify builtin Janet special forms.")
 
 (defconst janet-highlights
@@ -406,6 +418,7 @@ STATE is the `parse-partial-sexp' state for that position."
   (setq-local comment-start-skip "#+ *")
   (setq-local comment-use-syntax t)
   (setq-local comment-end "")
+  (setq-local imenu-generic-expression janet-imenu-generic-expression)
   (janet--set-indentation))
 
 ;;;###autoload
