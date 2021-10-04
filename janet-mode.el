@@ -42,8 +42,12 @@
     ;; For keywords, make the ':' part of the symbol class
     (modify-syntax-entry ?: "_" table)
 
-    ;; Backtick is a string delimiter
-    (modify-syntax-entry ?` "\"" table)
+    ;; Backtick is a string delimiter, but marking it as string delimiter
+    ;; causes a backslash inside it to be interpreted as a escape prefix,
+    ;; so things like (chr `\`) from boot.janet are interpreted incorrectly
+    ;; and subsequent syntax highlighting gets messed up.
+    ;;(modify-syntax-entry ?` "\"" table)
+    ;; We need to do it in a different way, see below: janet-backtick-pattern
 
     ;; Other chars that are allowed in symbols
     (modify-syntax-entry ?? "_" table)
@@ -168,13 +172,28 @@ the syntax table, so `forward-word' works as expected.")
     (rx-to-string `(sequence ,@janet-start-of-sexp (group ,builtins) symbol-end)))
   "The regex to identify builtin Janet special forms.")
 
+;; This handles multiline backtick strings when first loading a buffer,
+;; correctly matching the start and end by the number of backticks,
+;; so nesting them works too: ```outer ``inner`` outer again```
+;; See: https://www.emacswiki.org/emacs/MultilineRegexp
+;; As explained there, font-lock will get confused editing multiline strings.
+;; To fix a specific string after editing, select the whole string
+;; including the backticks and run: [M-x] font-lock-fontify-block
+(defconst janet-backtick-pattern
+  (rx-to-string `(seq
+                  (group (one-or-more ?`))
+                  (minimal-match (zero-or-more anything))
+                  (backref 1)
+                  )))
+
 (defconst janet-highlights
   `((,janet-special-form-pattern . (1 font-lock-keyword-face))
     (,janet-function-pattern . (1 font-lock-function-name-face))
     (,janet-variable-declaration-pattern . (1 font-lock-variable-name-face))
     (,janet-error-pattern . (1 font-lock-warning-face))
     (,janet-constant-pattern . (1 font-lock-constant-face))
-    (,janet-keyword-pattern . (1 font-lock-builtin-face))))
+    (,janet-keyword-pattern . (1 font-lock-builtin-face))
+    (,janet-backtick-pattern . font-lock-string-face)))
 
 ;; The janet-mode indentation logic borrows heavily from
 ;; racket-mode and clojure-mode
