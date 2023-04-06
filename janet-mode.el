@@ -42,9 +42,6 @@
     ;; For keywords, make the ':' part of the symbol class
     (modify-syntax-entry ?: "_" table)
 
-    ;; Backtick is a string delimiter
-    (modify-syntax-entry ?` "\"" table)
-
     ;; Other chars that are allowed in symbols
     (modify-syntax-entry ?? "_" table)
     (modify-syntax-entry ?! "_" table)
@@ -52,6 +49,24 @@
     (modify-syntax-entry ?@ "_" table)
 
     table))
+
+(defun janet-syntax-propertize (start end)
+  "Improve handling of long-strings and long-buffers.
+
+For START and END info, see docs for `syntax-propertize-function'."
+  (funcall
+   (syntax-propertize-rules
+    ((rx (not "`")
+         (group "`")
+         (group (* "`")
+                (+ (not "`"))
+                (* "`"))
+         (group "`")
+         (not "`"))
+     (1 "|")
+     (2 "w")
+     (3 "|")))
+   start end))
 
 (defconst janet-symbol '(one-or-more (or (syntax word) (syntax symbol)))
   "Regex representation of a Janet symbol.
@@ -425,6 +440,7 @@ STATE is the `parse-partial-sexp' state for that position."
 (define-derived-mode janet-mode prog-mode "janet"
   "Major mode for the Janet language"
   :syntax-table janet-mode-syntax-table
+  (setq-local syntax-propertize-function #'janet-syntax-propertize)
   (setq-local font-lock-defaults '(janet-highlights))
   (setq-local indent-line-function #'janet-indent-line)
   (setq-local lisp-indent-function #'janet-indent-function)
