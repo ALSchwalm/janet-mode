@@ -58,9 +58,14 @@ For START and END info, see docs for `syntax-propertize-function'."
    (syntax-propertize-rules
     ((rx (not "`")
          (group "`")
-         (group (* "`")
-                (+ (not "`"))
-                (* "`"))
+         (* "`")
+	 (+ (or (group (not (or ?\s ?\n ?\r ?\t ?\f ?\v
+				?\( ?\)
+				?\[ ?\]
+				?\{ ?\}
+				"`")))
+		(not "`")))
+         (* "`")
          (group "`")
          (not "`"))
      (1 "|")
