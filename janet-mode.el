@@ -27,6 +27,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x)
 
 (defgroup janet nil
   "A mode for Janet"
@@ -421,6 +422,150 @@ STATE is the `parse-partial-sexp' state for that position."
           (when-let 1)
           (while 1))))
 
+(defvar janet-repl-file-path "/usr/bin/janet"
+  "Path to the program used by `run-janet-repl'")
+
+(defvar janet-repl-arguments '("-s" "-q" "-n")
+  "Commandline arguments to pass to `janet'.")
+
+(defvar janet-repl-mode-map
+  (let ((map (nconc (make-sparse-keymap) comint-mode-map)))
+    ;; example definition
+    (define-key map "\t" 'completion-at-point)
+    map)
+  "Basic mode map for `run-janet-repl'.")
+
+(defvar janet-repl-prompt-regexp "^repl:[0-9]+:>|"
+  "Prompt for `run-janet-repl'.")
+
+(defvar janet-repl-buffer-name "*Janet*"
+  "Name of the buffer to use for the `run-janet' comint instance.")
+
+(defun janet-repl--live? ()
+  "Is the Janet intereprter process alive?"
+  (get-buffer-process janet-repl-buffer-name))
+
+(defmacro janet-repl--with (&rest body)
+  "Run BODY for Janet process, starting up if needed."
+  (declare (indent 0))
+  `(with-current-buffer (get-buffer-create janet-repl-buffer-name)
+     ,@body))
+
+(defmacro janet-repl--with-live (&rest body)
+  "Run BODY for Janet process, when it's alive."
+  (declare (indent 0))
+  `(when (janet-repl--live?)
+     (janet-repl--with ,@body)))
+
+(defun janet-repl--send (text)
+  "Send TEXT to Janet interpreter, starting up if needed."
+  (janet-repl--with
+    (let ((proc (get-buffer-process (current-buffer))))
+      (comint-send-string proc text))))
+
+(defmacro janet-repl--eval-1 (text)
+  "Internal implementation of interactive eval commands."
+  (declare (indent 0))
+  (let ((text-sym (gensym)))
+    `(when-let (,text-sym ,text)
+       (run-janet)
+       (janet-repl--with-live (janet-repl--send ,text-sym)))))
+
+(defun janet--syntax->inner-char (syntax)
+  "Get innermost char of SYNTAX."
+  (nth 1 syntax))
+
+(defun janet--syntax->last-sexp-start (state)
+  "Return start of last sexp of syntax STATE."
+  (nth 2 state))
+
+(defun janet--goto-last-sexp-start (syntax)
+  "Goto start of last sexp of SYNTAX."
+  (-some-> syntax janet--syntax->last-sexp-start goto-char))
+
+(defun janet--goto-inner-char (syntax)
+  "Goto innermost char of SYNTAX."
+  (-some-> syntax janet--syntax->inner-char goto-char))
+
+(defun janet--last-sexp-string ()
+  "Get form containing last s-exp point as string plus a trailing newline."
+  (save-excursion
+    (when-let (start (janet--goto-last-sexp-start (syntax-ppss)))
+      (while (ignore-errors (forward-sexp)))
+      (concat (buffer-substring-no-properties start (point))
+                "\n"))))
+
+(defun janet--current-form-string ()
+  "Get form containing current point as string plus a trailing newline."
+  (save-excursion
+    (when-let (start (janet--goto-inner-char (syntax-ppss)))
+      (while (ignore-errors (forward-sexp)))
+      (concat (buffer-substring-no-properties start (point))
+                "\n"))))
+
+(defun janet-repl-eval-region ()
+  "Send region to the Janet interpreter, starting up if needed."
+  (interactive)
+  (when (and (region-active-p) (not (region-noncontiguous-p)))
+    (janet-repl--eval-1
+      (buffer-substring (region-beginning) (region-end)))))
+
+(defun janet-repl-eval-current-form ()
+  "Send form containing point to the Janet interpreter, starting up if needed."
+  (interactive)
+  (janet-repl--eval-1
+    (janet--current-form-string)))
+
+(defun janet-repl-eval-last-sexp ()
+  "Send the last sexp to the Janet interpreter, starting up if needed."
+  (interactive)
+  (janet-repl--eval-1
+    (janet--last-sexp-string)))
+
+(defun janet-repl-eval-buffer ()
+  "Send the current buffer to the Janet interpreter, starting up if needed."
+  (interactive)
+  (janet-repl--eval-1
+    (buffer-string)))
+
+(defun inferior-janet--initialize ()
+  "Helper function to initialize inferior janet process."
+  (setq comint-process-echoes t)
+  (setq comint-use-prompt-regexp t))
+
+(define-derived-mode inferior-janet-mode comint-mode "Inferior Janet"
+  "Major mode for `run-janet'.
+
+\\<inferior-janet-mode-map>"
+  ;; this sets up the prompt so it matches things like: [foo@bar]
+  (setq comint-prompt-regexp janet-repl-prompt-regexp)
+  ;; this makes it read only; a contentious subject as some prefer the
+  ;; buffer to be overwritable.
+  (setq comint-prompt-read-only t))
+
+(define-key inferior-janet-mode-map (kbd "C-c C-z")
+  (lambda () (interactive) (other-window -1)))
+
+(add-hook 'inferior-janet-mode-hook 'inferior-janet--initialize)
+
+(defun run-janet ()
+  "Run an inferior instance of `janet' inside Emacs."
+  (interactive)
+  (let* ((janet-program janet-repl-file-path)
+         (buffer (get-buffer-create janet-repl-buffer-name))
+         (proc-alive (comint-check-proc buffer))
+         (process (get-buffer-process buffer)))
+    ;; if the process is dead then re-create the process and reset the
+    ;; mode.
+    (unless proc-alive
+      (with-current-buffer buffer
+        (apply 'make-comint-in-buffer "Janet" buffer
+               janet-program nil janet-repl-arguments)
+        (inferior-janet-mode)))
+    ;; Regardless, provided we have a valid buffer, we pop to it.
+    (when buffer
+      (pop-to-buffer buffer))))
+
 ;;;###autoload
 (define-derived-mode janet-mode prog-mode "janet"
   "Major mode for the Janet language"
@@ -435,6 +580,15 @@ STATE is the `parse-partial-sexp' state for that position."
   (setq-local imenu-case-fold-search t)
   (setq-local imenu-generic-expression janet-imenu-generic-expression)
   (janet--set-indentation))
+
+(set-keymap-parent janet-mode-map lisp-mode-shared-map)
+
+(define-key janet-mode-map (kbd "C-c C-z") #'run-janet)
+
+(define-key janet-mode-map (kbd "C-c C-b") #'janet-repl-eval-buffer)
+(define-key janet-mode-map (kbd "C-c C-r") #'janet-repl-eval-region)
+(define-key janet-mode-map (kbd "C-c C-e") #'janet-repl-eval-last-sexp)
+(define-key janet-mode-map (kbd "C-M-x") #'janet-repl-eval-current-form)
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.janet\\'" . janet-mode))
